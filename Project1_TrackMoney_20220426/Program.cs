@@ -15,8 +15,6 @@ namespace TrackMoney
 
             LoadData(dataPath);
 
-            //ShowMenu();
-
             ShowState(mainMenu);
 
             //Console.WriteLine(JsonSerializer.Serialize(items, new JsonSerializerOptions() { WriteIndented = true }));
@@ -59,31 +57,76 @@ namespace TrackMoney
         // A list of the available menu items and the functions they trigger
         public static List<MenuFunction> mainMenu = new List<MenuFunction>
         {
-            new MenuFunction("Show items (All / Expense(s) / Income(s))", ()=> ShowItems()),
-            new MenuFunction("Add New Expense / Income", ()=> AddNew()),
-            new MenuFunction("Edit Item (edit, remove)", ()=> EditItem()),
-            new MenuFunction("Save and Quit", ()=> Quit())
+            new MenuFunction("Show items (All / Expense(s) / Income(s))",   ()=> ShowState(listMenu,   1, "Show Items",                current: () => PrintItems())),
+            new MenuFunction("Add New Expense / Income",                    ()=> ShowState(addNewMenu, 1, "Add New Expense / Income")),
+            new MenuFunction("Edit Item (edit, remove)",                    ()=> ShowState(listMenu,   1, "Edit Item  (edit, remove)", current: () => PrintItems())),
+            new MenuFunction("Save and Quit",                               ()=> Quit())
         };
 
         public static List<MenuFunction> listMenu = new List<MenuFunction>
         {
-            new MenuFunction("Show all items", ()=> Quit()),
-            new MenuFunction("Show expenses only", ()=> Quit()),
-            new MenuFunction("Show incomes only", ()=> Quit())
-            //new MenuFunction("Go back to the main menu", ()=> Quit())
+            new MenuFunction("Sort list by columns",        ()=> ShowState(listMenuSortBy, 1, "Sorted by month (Newest first)", current: () => PrintItems("date"))),
+            new MenuFunction("Show all items",              ()=> ShowState(listMenu,       2, "Show All Items",                 current: () => PrintItems())),
+            new MenuFunction("Show expenses only",          ()=> ShowState(listMenu,       3, "Show Expenses",                  current: () => PrintItems(toShow: "expenses"))),
+            new MenuFunction("Show incomes only",           ()=> ShowState(listMenu,       4, "Show Incomes",                   current: () => PrintItems(toShow: "incomes"))),
+            new MenuFunction("<< Go back to the main menu", ()=> ShowState(mainMenu))
         };
 
-        static void ShowItems(string orderBy = "date", bool descending = true)
+        // be sorted in ascending or descending order. Sorted by month, amount or title.
+        public static List<MenuFunction> listMenuSortBy = new List<MenuFunction>
         {
-            PrintPanel("heading", heading: "Show items");
+            new MenuFunction("Sort by month (Newest first)",    ()=> ShowState(listMenuSortBy, 1, "Sorted by month (Newest first)",   current: () => PrintItems("date"))),
+            new MenuFunction("Sort by month (Oldest first)",    ()=> ShowState(listMenuSortBy, 2, "Sorted by month (Oldest first)",   current: () => PrintItems("date", false))),
+            new MenuFunction("Sort by amount (Highest first)",  ()=> ShowState(listMenuSortBy, 3, "Sorted by amount (Highest first)", current: () => PrintItems("amount"))),
+            new MenuFunction("Sort by amount (Lowest first)",   ()=> ShowState(listMenuSortBy, 4, "Sorted by amount (Lowest first)",  current: () => PrintItems("amount", false))),
+            new MenuFunction("Sort by title (Ascending)",       ()=> ShowState(listMenuSortBy, 5, "Sorted by title (A => Z)",         current: () => PrintItems("title", false))),
+            new MenuFunction("Sort by title (Descending)",      ()=> ShowState(listMenuSortBy, 6, "Sorted by title (Z => A)",         current: () => PrintItems("title"))),
+            new MenuFunction("<< Go back to menu",              ()=> ShowState(listMenu,       1, "Show All Items",                   current: () => PrintItems()))
+        };
+
+        public static List<MenuFunction> addNewMenu = new List<MenuFunction>
+        {
+            new MenuFunction("Add a new income",            ()=> ShowState(listMenuSortBy, 1, "Add New Income",  current: () => AddNew("income"))),
+            new MenuFunction("Add a new expense",           ()=> ShowState(listMenuSortBy, 1, "Add New Expense", current: () => AddNew("expense"))),
+            new MenuFunction("<< Go back to the main menu", ()=> ShowState(mainMenu))
+        };
+
+        // Draw the current state onto the console
+        static public void ShowState(List<MenuFunction> menu, int menuSelected = 1,
+            string subheading = "", bool filterTable = false, string orderBy = "", string thenBy = "",
+            Action current = null)
+        {
+            Console.Clear();
+            PrintHeader(subheading: subheading);
+            if (current is not null) current.Invoke();
+            ShowMenu(menu, menuSelected, subheading, current: current);
+        }
+
+        // Display a list of the items, filtered and sorted
+        static void PrintItems(string orderBy = "date", bool descending = true, string toShow = "all")
+        {
             PrintPanel("top", vPadding: 1);
             PrintPanel("row", "Type".PadRight(14) + "Month".PadRight(16) + "Title".PadRight(24) + "Amount");
             PrintPanel("hr");
 
+            List<Item> filteredItems = new List<Item>();
+            switch (toShow)
+            {
+                case "expenses":
+                    filteredItems = items.Where(item => item.Amount < 0).ToList();
+                    break;
+                case "incomes":
+                    filteredItems = items.Where(item => item.Amount > 0).ToList();
+                    break;
+                default:
+                    filteredItems = items;
+                    break;
+            }
+
             orderBy = FirstLetterToUpper(orderBy);
             List<Item> orderedItems = descending ?
-                          items.OrderByDescending(item => item.GetType().GetProperty(orderBy).GetValue(item)).ToList() :
-                          items.OrderBy(item => item.GetType().GetProperty(orderBy).GetValue(item)).ToList();
+                          filteredItems.OrderByDescending(item => item.GetType().GetProperty(orderBy).GetValue(item)).ToList() :
+                          filteredItems.OrderBy(item => item.GetType().GetProperty(orderBy).GetValue(item)).ToList();
 
             foreach (Item item in orderedItems)
             {
@@ -94,16 +137,34 @@ namespace TrackMoney
                     item.Title.PadRight(24) + 
                     FormatN(item.Amount)
                 );
-                //Console.Write(item.Date.ToString("MMMM", ci).PadRight(10) + item.Title.PadRight(20) + item.Amount);
             }
             PrintPanel("bottom", vPadding: 1);
-            ShowMenu(listMenu);
-            Console.ReadLine();
         }
 
-        static void AddNew()
+        static bool wantsToQuit(string userInput)
         {
+            return (userInput.ToLower().Trim() == "exit" ||
+                    userInput.ToLower().Trim() == "q" ||
+                    userInput.ToLower().Trim() == "quit");
+        }
 
+        static void AddNew(string typeOfExpense = "expense")
+        {
+            Console.CursorVisible = true;
+            int hMargin = (Console.WindowWidth / 2) - (48 / 2);
+            Console.WriteLine();
+            Console.Write("".PadRight(hMargin) + "Enter " + typeOfExpense + " amount: ");
+            string inputAmount = Console.ReadLine();
+            bool isNumber = int.TryParse(inputAmount, out int amount);
+
+            if (wantsToQuit(inputAmount)) ShowState(addNewMenu, 1, "Add New Expense / Income");
+
+            //else if (int.TryParse(userInput, out int amount)
+            //{
+            //    //new Program().throwError("Du får inte ange ett tomt värde");
+            //}
+
+            //bool rightPartIsInt = int.TryParse(parts[1], out int num); // check if the right side is a number
         }
 
         static void EditItem()
@@ -115,25 +176,11 @@ namespace TrackMoney
         static void PrintHeader(string subheading = "")
         {
             Console.Clear();
-            Panel("heading", "TrackMoney v1.0", subheading: subheading, width: 60, tMargin: 1);
-        }
-
-        static public void ShowState(List<MenuFunction> menu, int menuSelected = 1, string subheading = "", bool filterTable = false, string orderBy = "", string thenBy = "")
-        {
-            // Set or reset global options so that they stay the same between state changes
-            //filterTableTemp = filterTable;
-            //orderByTemp = orderBy;
-            //thenByTemp = thenBy;
-
-            // Draw the current state onto the console
-            PrintHeader(subheading: subheading);
-            //PrintAssets();
-            ShowMenu(menu, menuSelected, subheading);
-            SelectMenu(menu, menuSelected, subheading);
+            Panel("heading", "TrackMoney v1.0", subheading: subheading, width: 45, tMargin: 1);
         }
 
         // Displays a menu UI for the options listed in the specified "menu" List
-        static void ShowMenu(List<MenuFunction> menu, int selected = 1, string subheading = "", int width = 60)
+        static void ShowMenu(List<MenuFunction> menu, int selected = 1, string subheading = "", int width = 45, Action current = null)
         {
             Panel("top", width: width, vPadding: 1);
             if (selected < 1) selected = menu.Count;
@@ -144,11 +191,11 @@ namespace TrackMoney
             }
             Panel("bottom", width: width, vPadding: 1);
             Console.CursorVisible = false;
-            SelectMenu(menu, selected, subheading);
+            SelectMenu(menu, selected, subheading, current: current);
         }
 
-        // Implements redrawing the menu onto the console to give the illusion of up-down selection
-        static void SelectMenu(List<MenuFunction> menu, int selected = 1, string subheading = "")
+        // Redraws the menu onto the console to give the illusion of up-down selection
+        static void SelectMenu(List<MenuFunction> menu, int selected = 1, string subheading = "", Action current = null)
         {
             ConsoleKeyInfo keyPressed = Console.ReadKey(true);
             switch (keyPressed.Key)
@@ -157,10 +204,10 @@ namespace TrackMoney
                     menu[selected - 1].Action.Invoke();
                     break;
                 case ConsoleKey.UpArrow or ConsoleKey.LeftArrow or ConsoleKey.Backspace:
-                    ShowState(menu, selected - 1, subheading);
+                    ShowState(menu, selected - 1, subheading, current: current);
                     break;
                 case ConsoleKey.DownArrow or ConsoleKey.RightArrow or ConsoleKey.Tab:
-                    ShowState(menu, selected + 1, subheading);
+                    ShowState(menu, selected + 1, subheading, current: current);
                     break;
                 default: // If the keyPressed is not arrows/Enter, then check which number it is
                     Int32 keyNumber;
@@ -168,11 +215,10 @@ namespace TrackMoney
                     {
                         menu[keyNumber - 1].Action.Invoke();
                     }
-                    else ShowState(menu, selected, subheading);
+                    else ShowState(menu, selected, subheading, current: current);
                     break;
             }
         }
-
 
         // Generates a panel window and draws it onto the consol to show output in a nice way
         static void Panel(string partToPrint, string content = "",
