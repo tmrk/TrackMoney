@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Globalization;
 
 namespace TrackMoney
@@ -20,12 +19,7 @@ namespace TrackMoney
 		public long Amount { get; set; }
 	}
 
-    internal class ItemList<T> : List<Item>
-    {
-        public List<Item> data { get; set; }
-    }
-
-    internal class Column
+    public class Column
     {
         public Column(string name = "", int width = 1, string propertyName = "")
         {
@@ -38,7 +32,7 @@ namespace TrackMoney
         public string PropertyName { get; set; }
     }
 
-    internal class MenuFunction
+    public class MenuFunction
     {
         public MenuFunction(string description, Action action)
         {
